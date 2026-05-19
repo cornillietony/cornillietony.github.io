@@ -63,7 +63,7 @@
         .cell-CDD { background-color: #fca5a5; } 
         .cell-POLY { background-color: #d8b4fe; }
         .role-select { width: 100%; border: none; background: transparent; font-weight: bold; cursor: pointer; -webkit-appearance: none; }
-
+        .cell-manquante { background-color: #fef2f2; border: 2px dashed #ef4444 !important; }
         tr:hover td { background-color: rgba(26, 35, 126, 0.05) !important; }
         
         @media print {
@@ -848,17 +848,21 @@ function renderResult() {
 
     let tbody = "";
 
-    // FILTRE : On ne garde que les agents qui ont au moins un rôle ce mois-ci
+    // 1. FILTRE : Agents actifs du mois
     const agentsActifs = getSortedAgents().filter(a => {
         return state.dates.some(d => {
             const dKey = d.toISOString();
-            const roleJ = state.planning[dKey]?.['J']?.[a.id] || "-";
-            const roleN = state.planning[dKey]?.['N']?.[a.id] || "-";
-            return roleJ !== "-" || roleN !== "-";
+            return (state.planning[dKey]?.['J']?.[a.id] || "-") !== "-" || 
+                   (state.planning[dKey]?.['N']?.[a.id] || "-") !== "-";
         });
     });
 
-    // On génère les lignes uniquement pour les agents actifs
+    // Liste des rôles obligatoires à contrôler pour CHAQUE shift (Jour et Nuit)
+    // Ajustez cette liste selon vos besoins réels (ex: "CDD", "CH-PL", "BAT1", etc.)
+    const rolesObligatoires = ["CDD", "CH-PL", "AMU1-CH", "AMU1-EQ", "AMU2-CH", "AMU2-EQ", "BAT1", "BAT2", "BAL1", "BAL2"];
+    let alertesManques = [];
+
+    // 2. GÉNÉRATION DES LIGNES TABLEAU
     agentsActifs.forEach(a => {
         tbody += `<tr><td class="sticky-col font-bold bg-gray-50 ${a.isPro?'text-blue-800':''}">${a.name}</td>`;
         state.dates.forEach(d => {
@@ -867,23 +871,15 @@ function renderResult() {
                 const role = state.planning[dKey]?.[s]?.[a.id] || "-";
 
                 let color = "";
-                if(role.includes("AMU1")) {
-                    color = "cell-AMU1";
-                } else if(role.includes("AMU2")) {
-                    color = "cell-AMU2";
-                } else if(role.includes("BAT")) {
-                    color = "cell-BAT";
-                } else if(role.includes("BAL")) {
-                    color = "cell-BAL";
-                } else if(role.includes("CH")) {
-                    color = "cell-CH";
-                } else if(role === "CDD") {
-                    color = "cell-CDD";
-                } else if(role === "POLY") {
-                    color = "cell-POLY";
-                }
+                if(role.includes("AMU1")) color = "cell-AMU1";
+                else if(role.includes("AMU2")) color = "cell-AMU2";
+                else if(role.includes("BAT")) color = "cell-BAT";
+                else if(role.includes("BAL")) color = "cell-BAL";
+                else if(role.includes("CH")) color = "cell-CH";
+                else if(role === "CDD") color = "cell-CDD";
+                else if(role === "POLY") color = "cell-POLY";
 
-                tbody += `<td class="${color}"><select class="role-select" onchange="state.planning['${dKey}']['${s}']['${a.id}']=this.value; saveData()">
+                tbody += `<td class="${color}"><select class="role-select" onchange="state.planning['${dKey}']['${s}']['${a.id}']=this.value; renderResult(); saveData()">
                     ${rolesListe.map(r => `<option value="${r}" ${role===r?'selected':''}>${r}</option>`).join('')}
                 </select></td>`;
             });
@@ -892,6 +888,54 @@ function renderResult() {
     });
 
     document.getElementById('tbody-resultat').innerHTML = tbody;
+
+    // 3. LOGIQUE DE CONTRÔLE DES RÔLES MANQUANTS
+    state.dates.forEach(d => {
+        const dKey = d.toISOString();
+        const dateAffichage = `${d.getUTCDate()}/${d.getUTCMonth()+1}`;
+
+        ['J', 'N'].forEach(s => {
+            const shiftTexte = s === 'J' ? 'JOUR' : 'NUIT';
+            // On récupère tous les rôles attribués pour ce shift précis
+            const rolesAttribues = Object.values(state.planning[dKey]?.[s] || {});
+
+            // Pour chaque rôle obligatoire, on vérifie s'il est présent
+            rolesObligatoires.forEach(roleRecherche => {
+                if (!rolesAttribues.includes(roleRecherche)) {
+                    alertesManques.push(`Le <b>${dateAffichage}</b> en <b>${shiftTexte}</b> : rôle <span class="text-red-600 font-bold">${roleRecherche}</span> non pourvu.`);
+                }
+            });
+        });
+    });
+
+    // 4. AFFICHAGE DES ALERTES DE CONTRÔLE
+    let alerteContainer = document.getElementById('controle-planning-container');
+    if (!alerteContainer) {
+        // Si le conteneur HTML n'existe pas encore, on le crée dynamiquement au-dessus du tableau
+        alerteContainer = document.createElement('div');
+        alerteContainer.id = 'controle-planning-container';
+        alerteContainer.className = 'mb-4 p-4 rounded-xl no-print';
+        const target = document.getElementById('table-resultat').parentElement;
+        target.parentNode.insertBefore(alerteContainer, target);
+    }
+
+    if (alertesManques.length > 0) {
+        alerteContainer.className = 'mb-4 p-4 rounded-xl no-print bg-amber-50 border border-amber-200 text-amber-900';
+        alerteContainer.innerHTML = `
+            <div class="flex items-center gap-2 font-bold text-amber-800 mb-2">
+                <span>⚠️ CONTRÔLE QUALITÉ : ${alertesManques.length} garde(s) incomplète(s)</span>
+            </div>
+            <ul class="list-disc pl-5 text-xs max-h-40 overflow-y-auto space-y-1">
+                ${alertesManques.map(msg => `<li>${msg}</li>`).join('')}
+            </ul>`;
+    } else {
+        alerteContainer.className = 'mb-4 p-4 rounded-xl no-print bg-green-50 border border-green-200 text-green-950';
+        alerteContainer.innerHTML = `
+            <div class="flex items-center gap-2 font-bold text-green-800">
+                <span>✅ CONTRÔLE QUALITÉ : Tous les rôles requis sont correctement attribués pour le mois !</span>
+            </div>`;
+    }
+
     document.getElementById('result-container').classList.remove('hidden');
 }
 
