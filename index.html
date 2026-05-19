@@ -21,56 +21,55 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
 
-    <style>
-
+<style>
         body { background-color: #f3f4f6; font-family: system-ui, sans-serif; font-size: 0.82rem; }
-
         .tab-btn.active { background-color: #1a237e; color: white; border-bottom: 4px solid #facc15; }
-
         .tab-btn { background-color: #e5e7eb; color: #4b5563; transition: all 0.2s; }
-
+        
+        /* Table Structure */
         table { border-collapse: separate; border-spacing: 0; width: 100%; text-align: center; }
-
         th, td { border: 1px solid #d1d5db; padding: 4px; }
 
-        .sticky-col { position: sticky; left: 0; background-color: white; z-index: 20; text-align: left; border-right: 2px solid #000 !important; min-width: 170px; }
-
-        .cell-AMU1 { background-color: #fef08a; } 
-        
-        .cell-AMU2 { background-color: #fde047; border: 2px solid #eab308 !important; } 
-        
-        .cell-BAT { background-color: #93c5fd; }
-
-        .cell-BAL { background-color: #86efac; } .cell-CH { background-color: #fdba74; }
-
-        .cell-CDD { background-color: #fca5a5; } .cell-POLY { background-color: #d8b4fe; }
-
-        .role-select { width: 100%; border: none; background: transparent; font-weight: bold; cursor: pointer; -webkit-appearance: none; }
-
-        /* Surligne la ligne au survol */
-tr:hover td { 
-    background-color: rgba(26, 35, 126, 0.05) !important; 
-}
-
-/* Surligne la colonne au survol */
-td:hover::after, th:hover::after {
-    content: "";
-    position: absolute;
-    background-color: rgba(254, 202, 202, 0.2);
-    left: 0; right: 0; top: -5000px; bottom: -5000px;
-    z-index: -1;
-    pointer-events: none;
-}
-table { overflow: hidden; } /* Nécessaire pour le surlignage de colonne */
-
-        @media print {
-
-            .no-print { display: none !important; }
-
-            .sticky-col { position: static !important; border-right: 1px solid #d1d5db !important; }
-
+        /* Sticky Colonne Gauche (Noms) */
+        .sticky-col { 
+            position: sticky; 
+            left: 0; 
+            background-color: white; 
+            z-index: 40; 
+            text-align: left; 
+            border-right: 2px solid #000 !important; 
+            min-width: 170px; 
         }
 
+        /* Sticky Header (Haut) */
+        #thead-pointage th { 
+            position: sticky; 
+            z-index: 30; 
+            top: 0; 
+        }
+        /* Ajustement précis pour que les lignes de l'en-tête se suivent */
+        #thead-pointage tr:nth-child(1) th { top: 0; height: 35px; }
+        #thead-pointage tr:nth-child(2) th { top: 35px; height: 30px; }
+        #thead-pointage tr:nth-child(3) th { top: 65px; height: 25px; }
+
+        /* Intersection (Haut-Gauche) : Doit être au-dessus de tout */
+        #thead-pointage tr th.sticky-col { z-index: 50; background-color: #f9fafb; }
+
+        .cell-AMU1 { background-color: #fef08a; } 
+        .cell-AMU2 { background-color: #fde047; border: 2px solid #eab308 !important; } 
+        .cell-BAT { background-color: #93c5fd; }
+        .cell-BAL { background-color: #86efac; } 
+        .cell-CH { background-color: #fdba74; }
+        .cell-CDD { background-color: #fca5a5; } 
+        .cell-POLY { background-color: #d8b4fe; }
+        .role-select { width: 100%; border: none; background: transparent; font-weight: bold; cursor: pointer; -webkit-appearance: none; }
+
+        tr:hover td { background-color: rgba(26, 35, 126, 0.05) !important; }
+        
+        @media print {
+            .no-print { display: none !important; }
+            .sticky-col { position: static !important; border-right: 1px solid #d1d5db !important; }
+        }
     </style>
 
 </head>
