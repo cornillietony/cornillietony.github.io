@@ -560,10 +560,9 @@ function generatePlanning() {
             if(cdd) { assignments[cdd.id] = "CDD"; simCounters[cdd.id].CDD++; }
 
             // --- 2. CHAUFFEUR (Réservé aux PROs + Continuité 24h forcée) ---
-            let chQualified = pool.filter(a => a.cap.CH && a.isPro && !assignments[a.id]); // RÈGLE : Strictement réservé aux PROs
+            let chQualified = pool.filter(a => a.cap.CH && a.isPro && !assignments[a.id]);
             if(chQualified.length > 0) {
                 let bestCH = chQualified.sort((a, b) => {
-                    // RÈGLE : Si l'agent était chauffeur le jour, il RESTE chauffeur la nuit (Continuité 24h)
                     if (shift === 'N' && newPl[dKey]['J'][a.id] === "CH-PL") return -1;
                     if (shift === 'N' && newPl[dKey]['J'][b.id] === "CH-PL") return 1;
                     return simCounters[a.id].CH - simCounters[b.id].CH;
@@ -571,7 +570,7 @@ function generatePlanning() {
                 assignments[bestCH.id] = "CH-PL"; simCounters[bestCH.id].CH++;
             }
 
-            // --- 3. AMU (AMU1 Alternance / AMU2 Continuité 24h) ---
+            // --- 3. AMU (AMU1 Alternance stricte / AMU2 Continuité 24h) ---
             const amuRoles = ["AMU1-CH", "AMU1-EQ", "AMU2-CH", "AMU2-EQ"];
             amuRoles.forEach(role => {
                 let isAMU1 = role.includes("AMU1");
@@ -580,11 +579,13 @@ function generatePlanning() {
                 let amuQualified = pool.filter(a => {
                     if (assignments[a.id]) return false;
                     
-                    // RÈGLE AMU1 : Pas d'AMU1 la nuit si déjà fait le jour (Interdiction 24h)
-                    if (isAMU1 && shift === 'N' && newPl[dKey]['J'][a.id]?.includes("AMU1")) return false;
-                    
-                    // RÈGLE AMU1 : Max 2 gardes consécutives complètes
                     if (isAMU1) {
+                        // RÈGLE AMU1 NUIT : Obligation d'avoir fait BAT ou BAL le jour même
+                        if (shift === 'N') {
+                            const roleJour = newPl[dKey]['J'][a.id];
+                            if (!roleJour || (!roleJour.includes("BAT") && !roleJour.includes("BAL"))) return false;
+                        }
+                        // RÈGLE AMU1 : Max 2 gardes consécutives complètes
                         let r1 = getPrevRole(a.id, 1);
                         let r2 = getPrevRole(a.id, 2);
                         if (r1?.includes("AMU1") && r2?.includes("AMU1")) return false;
@@ -595,23 +596,13 @@ function generatePlanning() {
 
                 if(amuQualified.length > 0) {
                     let bestAMU = amuQualified.sort((a, b) => {
-                        // RÈGLE AMU2 : Si l'agent avait ce rôle AMU2 le jour, il DOIT le garder la nuit (Continuité 24h)
+                        // Continuité AMU2 24h
                         if (shift === 'N' && isAMU2) {
                             if (newPl[dKey]['J'][a.id] === role) return -1;
                             if (newPl[dKey]['J'][b.id] === role) return 1;
                         }
 
-                        // Gestion des volontaires / pros pour le reste
                         if (a.isPro !== b.isPro) return a.isPro ? 1 : -1;
-                        
-                        // RÈGLE AMU1 : Priorité alternance de jour (BAT le jour -> AMU1 la nuit)
-                        if (shift === 'N' && isAMU1) {
-                            const rJ_A = newPl[dKey]['J'][a.id];
-                            const rJ_B = newPl[dKey]['J'][b.id];
-                            if (rJ_A && rJ_A.includes("BAT")) return -1;
-                            if (rJ_B && rJ_B.includes("BAT")) return 1;
-                        }
-
                         if (getPrevRole(a.id, 1) === role) return 1;
                         return simCounters[a.id].AMU - simCounters[b.id].AMU;
                     })[0];
@@ -619,25 +610,30 @@ function generatePlanning() {
                 }
             });
 
-            // --- 4. BAL ---
+            // --- 4. BAL (Avec bascule AMU1) ---
             ["BAL1", "BAL2"].forEach(role => {
                 let balQualified = pool.filter(a => a.cap.BAL && !assignments[a.id]);
                 if(balQualified.length > 0) {
                     let bestBAL = balQualified.sort((a, b) => {
-                        if (shift === 'N' && newPl[dKey]['J'][a.id] === role) return -1;
-                        if (shift === 'N' && newPl[dKey]['J'][b.id] === role) return 1;
+                        // RÈGLE NUIT : Si AMU1 le jour -> Priorité absolue pour aller en BAL (ou BAT) la nuit
+                        if (shift === 'N') {
+                            if (newPl[dKey]['J'][a.id]?.includes("AMU1")) return -1;
+                            if (newPl[dKey]['J'][b.id]?.includes("AMU1")) return 1;
+                            // Si l'un des deux doit aller en AMU1 la nuit, on évite de le mettre en BAL
+                            if (newPl[dKey]['N'][a.id]?.includes("AMU1")) return 1;
+                        }
                         return simCounters[a.id].BAL - simCounters[b.id].BAL;
                     })[0];
                     assignments[bestBAL.id] = role; simCounters[bestBAL.id].BAL++;
                 }
             });
 
-            // --- 5. BAT ---
+            // --- 5. BAT (Avec bascule AMU1) ---
             ["BAT1", "BAT2"].forEach(role => {
                 let batQualified = pool.filter(a => a.cap.BAT && !assignments[a.id]);
                 if(batQualified.length > 0) {
                     let bestBAT = batQualified.sort((a, b) => {
-                        // Transition forcée : Si AMU1 le jour -> BAT la nuit
+                        // RÈGLE NUIT : Si AMU1 le jour -> Priorité absolue pour aller en BAT (ou BAL) la nuit
                         if (shift === 'N') {
                             if (newPl[dKey]['J'][a.id]?.includes("AMU1")) return -1;
                             if (newPl[dKey]['J'][b.id]?.includes("AMU1")) return 1;
@@ -657,7 +653,6 @@ function generatePlanning() {
     state.planning = newPl;
     renderResult();
 }
-
 function finalizeCounters() {
     // 1. On repart des compteurs actuels (ou on les initialise)
     calculateCounters();
