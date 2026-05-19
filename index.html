@@ -750,58 +750,79 @@ function updateDates() {
 
 
 function renderPointage() {
-    let thead1 = `<tr><th class="sticky-col">AGENT</th>`, thead2 = `<tr><th class="sticky-col"></th>`;
+    const agentsSorted = getSortedAgents();
     
-    // On prépare des objets pour stocker les totaux
+    // 1. CALCUL PRÉALABLE DES TOTAUX
     let totalsJ = {}, totalsN = {};
+    state.dates.forEach(d => {
+        const iso = d.toISOString();
+        totalsJ[iso] = 0;
+        totalsN[iso] = 0;
+        agentsSorted.forEach(agent => {
+            if (state.presences[`${agent.id}_${iso}_J`]) totalsJ[iso]++;
+            if (state.presences[`${agent.id}_${iso}_N`]) totalsN[iso]++;
+        });
+    });
+
+    // 2. CONSTRUCTION DE L'EN-TÊTE (3 LIGNES)
+    // Ligne 1 : Les Dates
+    let trDates = `<tr><th class="sticky-col bg-gray-100">DATES</th>`;
+    // Ligne 2 : Les Compteurs (Total)
+    let trTotals = `<tr><th class="sticky-col bg-gray-100 text-blue-800">TOTAL PRÉSENTS</th>`;
+    // Ligne 3 : Les titres J / N
+    let trJN = `<tr><th class="sticky-col bg-gray-100">SHIFT</th>`;
 
     state.dates.forEach((d) => {
         const iso = d.toISOString();
-        thead1 += `<th colspan="2" class="border-l border-gray-500">${d.getUTCDate()}/${d.getUTCMonth()+1}</th>`;
-        thead2 += `<th class="text-[9px] bg-blue-900 text-white">J</th><th class="text-[9px] bg-indigo-900 text-white">N</th>`;
+        const jour = d.getUTCDate();
+        const mois = d.getUTCMonth() + 1;
         
-        // Initialisation des compteurs pour cette date
-        totalsJ[iso] = 0;
-        totalsN[iso] = 0;
+        trDates += `<th colspan="2" class="bg-gray-800 text-white border-l border-gray-600">${jour}/${mois}</th>`;
+        
+        // On affiche le total J et N sous chaque date
+        trTotals += `<th class="bg-blue-50 text-blue-800 font-black text-sm">${totalsJ[iso]}</th>
+                     <th class="bg-indigo-50 text-indigo-800 font-black text-sm border-r border-gray-400">${totalsN[iso]}</th>`;
+        
+        trJN += `<th class="text-[9px] bg-blue-900 text-white">J</th>
+                 <th class="text-[9px] bg-indigo-900 text-white border-r border-gray-400">N</th>`;
     });
-    document.getElementById('thead-pointage').innerHTML = thead1 + "</tr>" + thead2 + "</tr>";
 
+    document.getElementById('thead-pointage').innerHTML = trDates + "</tr>" + trTotals + "</tr>" + trJN + "</tr>";
+
+    // 3. CONSTRUCTION DU CORPS (BODY)
     let tbody = "";
-    getSortedAgents().forEach(agent => {
-        tbody += `<tr><td class="sticky-col font-bold border-r border-black bg-white flex justify-between items-center">
-            <span class="${agent.isPro?'text-blue-800':''}">${agent.name}</span>
-            <div class="flex"><span class="text-green-600 cursor-pointer px-1 text-lg" onclick="toggleFullMonth('${agent.id}', true)">+</span><span class="text-red-600 cursor-pointer px-1 text-lg" onclick="toggleFullMonth('${agent.id}', false)">-</span></div>
-        </td>`;
+    agentsSorted.forEach(agent => {
+        tbody += `<tr>
+            <td class="sticky-col font-bold border-r border-black bg-white flex justify-between items-center">
+                <span class="${agent.isPro ? 'text-blue-800' : ''}">${agent.name}</span>
+                <div class="flex no-print">
+                    <span class="text-green-600 cursor-pointer px-1 text-lg" onclick="toggleFullMonth('${agent.id}', true)">+</span>
+                    <span class="text-red-600 cursor-pointer px-1 text-lg" onclick="toggleFullMonth('${agent.id}', false)">-</span>
+                </div>
+            </td>`;
+            
         state.dates.forEach((d) => {
             const iso = d.toISOString();
             const isPresentJ = state.presences[`${agent.id}_${iso}_J`];
             const isPresentN = state.presences[`${agent.id}_${iso}_N`];
 
-            // On incrémente si l'agent est présent
-            if(isPresentJ) totalsJ[iso]++;
-            if(isPresentN) totalsN[iso]++;
-
-            tbody += `<td class="cursor-pointer" onclick="togglePresence('${agent.id}', '${iso}', 'J')"><input type="checkbox" ${isPresentJ ? "checked":""} class="pointer-events-none"></td>
-                      <td class="cursor-pointer bg-gray-50 border-r" onclick="togglePresence('${agent.id}', '${iso}', 'N')"><input type="checkbox" ${isPresentN ? "checked":""} class="pointer-events-none"></td>`;
+            tbody += `
+                <td class="cursor-pointer ${isPresentJ ? 'bg-green-50' : ''}" onclick="togglePresence('${agent.id}', '${iso}', 'J')">
+                    <input type="checkbox" ${isPresentJ ? "checked" : ""} class="pointer-events-none">
+                </td>
+                <td class="cursor-pointer border-r border-gray-300 ${isPresentN ? 'bg-green-50' : ''}" onclick="togglePresence('${agent.id}', '${iso}', 'N')">
+                    <input type="checkbox" ${isPresentN ? "checked" : ""} class="pointer-events-none">
+                </td>`;
         });
         tbody += "</tr>";
     });
+    
     document.getElementById('tbody-pointage').innerHTML = tbody;
 
-    // AJOUT : Création d'une ligne de pied de tableau pour afficher les totaux
-    let tfoot = `<tr class="bg-gray-800 text-white font-bold"><td class="sticky-col bg-gray-800">TOTAL PRÉSENTS</td>`;
-    state.dates.forEach(d => {
-        const iso = d.toISOString();
-        tfoot += `<td>${totalsJ[iso]}</td><td>${totalsN[iso]}</td>`;
-    });
-    
-    // On s'assure que l'élément tfoot existe ou on l'ajoute au tableau
-    if(!document.getElementById('tfoot-pointage')){
-        const newTfoot = document.createElement('tfoot');
-        newTfoot.id = 'tfoot-pointage';
-        document.getElementById('table-pointage').appendChild(newTfoot);
+    // On vide le tfoot car les totaux sont maintenant en haut
+    if(document.getElementById('tfoot-pointage')) {
+        document.getElementById('tfoot-pointage').innerHTML = "";
     }
-    document.getElementById('tfoot-pointage').innerHTML = tfoot + "</tr>";
 }
 
 function renderResult() {
