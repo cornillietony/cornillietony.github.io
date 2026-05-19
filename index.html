@@ -370,7 +370,16 @@ function exportToExcel() {
     });
     exportData.push(header);
 
-    getSortedAgents().forEach(a => {
+    // FILTRE : Même logique pour alléger l'Excel
+    const agentsActifs = getSortedAgents().filter(a => {
+        return state.dates.some(d => {
+            const dKey = d.toISOString();
+            return (state.planning[dKey]?.['J']?.[a.id] || "-") !== "-" || 
+                   (state.planning[dKey]?.['N']?.[a.id] || "-") !== "-";
+        });
+    });
+
+    agentsActifs.forEach(a => {
         let row = [a.name];
         state.dates.forEach(d => {
             const dKey = d.toISOString();
@@ -380,12 +389,13 @@ function exportToExcel() {
         exportData.push(row);
     });
 
-    // --- 2. SAUT DE LIGNES POUR SÉPARER LES TABLEAUX ---
+    // --- 2. SAUT DE LIGNES ---
     exportData.push([]);
     exportData.push([]);
     exportData.push(["--- COMPTEURS GLOBAUX ---"]);
 
-    // --- 3. EN-TÊTE ET DONNÉES DES STATISTIQUES ---
+    // --- 3. DONNÉES DES STATISTIQUES ---
+    // Note : On laisse tous les agents dans les stats pour garder l'historique global correct
     exportData.push(["Agent", "CDD", "AMU", "BAT", "BAL", "CH", "POLY", "TOTAL"]);
     state.agents.forEach(a => {
         const c = a.counters || { CDD:0, AMU:0, BAT:0, BAL:0, CH:0, POLY:0 };
@@ -393,11 +403,8 @@ function exportToExcel() {
         exportData.push([a.name, c.CDD, c.AMU, c.BAT, c.BAL, c.CH, c.POLY, total]);
     });
 
-    // Création de l'unique feuille contenant tout
     const ws = XLSX.utils.aoa_to_sheet(exportData);
     XLSX.utils.book_append_sheet(wb, ws, "Planning_et_Stats");
-
-    // Téléchargement
     XLSX.writeFile(wb, `Planning_ShiftB_${state.month}.xlsx`);
 }
 
@@ -835,62 +842,57 @@ function renderPointage() {
 }
 
 function renderResult() {
-
     let thead = `<tr><th class="sticky-col bg-gray-100">Agent</th>`;
-
     state.dates.forEach(d => thead += `<th colspan="2" class="border-l border-gray-600">${d.getUTCDate()}/${d.getUTCMonth()+1}</th>`);
-
     document.getElementById('thead-resultat').innerHTML = thead + "</tr>";
 
     let tbody = "";
 
-    getSortedAgents().forEach(a => {
-
-        tbody += `<tr><td class="sticky-col font-bold bg-gray-50 ${a.isPro?'text-blue-800':''}">${a.name}</td>`;
-
-        state.dates.forEach(d => {
-
+    // FILTRE : On ne garde que les agents qui ont au moins un rôle ce mois-ci
+    const agentsActifs = getSortedAgents().filter(a => {
+        return state.dates.some(d => {
             const dKey = d.toISOString();
+            const roleJ = state.planning[dKey]?.['J']?.[a.id] || "-";
+            const roleN = state.planning[dKey]?.['N']?.[a.id] || "-";
+            return roleJ !== "-" || roleN !== "-";
+        });
+    });
 
+    // On génère les lignes uniquement pour les agents actifs
+    agentsActifs.forEach(a => {
+        tbody += `<tr><td class="sticky-col font-bold bg-gray-50 ${a.isPro?'text-blue-800':''}">${a.name}</td>`;
+        state.dates.forEach(d => {
+            const dKey = d.toISOString();
             ['J', 'N'].forEach(s => {
-
                 const role = state.planning[dKey]?.[s]?.[a.id] || "-";
 
                 let color = "";
-                    if(role.includes("AMU1")) {
-                            color = "cell-AMU1";
-                    } else if(role.includes("AMU2")) {
-                            color = "cell-AMU2";
-                    } else if(role.includes("BAT")) {
-                            color = "cell-BAT";
-                    } else if(role.includes("BAL")) {
-                            color = "cell-BAL";
-                    } else if(role.includes("CH")) {
-                            color = "cell-CH";
-                    } else if(role === "CDD") {
-                            color = "cell-CDD";
-                    } else if(role === "POLY") {
-                                color = "cell-POLY";
-                    }
+                if(role.includes("AMU1")) {
+                    color = "cell-AMU1";
+                } else if(role.includes("AMU2")) {
+                    color = "cell-AMU2";
+                } else if(role.includes("BAT")) {
+                    color = "cell-BAT";
+                } else if(role.includes("BAL")) {
+                    color = "cell-BAL";
+                } else if(role.includes("CH")) {
+                    color = "cell-CH";
+                } else if(role === "CDD") {
+                    color = "cell-CDD";
+                } else if(role === "POLY") {
+                    color = "cell-POLY";
+                }
 
                 tbody += `<td class="${color}"><select class="role-select" onchange="state.planning['${dKey}']['${s}']['${a.id}']=this.value; saveData()">
-
                     ${rolesListe.map(r => `<option value="${r}" ${role===r?'selected':''}>${r}</option>`).join('')}
-
                 </select></td>`;
-
             });
-
         });
-
         tbody += `</tr>`;
-
     });
 
     document.getElementById('tbody-resultat').innerHTML = tbody;
-
     document.getElementById('result-container').classList.remove('hidden');
-
 }
 
 
