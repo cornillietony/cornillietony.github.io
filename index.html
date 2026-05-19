@@ -563,9 +563,14 @@ function generatePlanning() {
             };
 
             // --- 1. CDD ---
-            let cdd = pool.find(a => a.cap.CDD);
-            if(cdd) { assignments[cdd.id] = "CDD"; simCounters[cdd.id].CDD++; }
-
+            let cddQualified = pool.filter(a => a.cap.CDD);
+            if(cddQualified.length > 0) {
+                let bestCDD = cddQualified.sort((a, b) => {
+                    return simCounters[a.id].CDD - simCounters[b.id].CDD;
+                })[0];
+                assignments[bestCDD.id] = "CDD"; 
+                simCounters[bestCDD.id].CDD++;
+            }
             // --- 2. CHAUFFEUR (Réservé aux PROs + Continuité 24h forcée) ---
             let chQualified = pool.filter(a => a.cap.CH && a.isPro && !assignments[a.id]);
             if(chQualified.length > 0) {
