@@ -69,6 +69,11 @@
         @media print {
             .no-print { display: none !important; }
             .sticky-col { position: static !important; border-right: 1px solid #d1d5db !important; }
+            /* Forcer l'affichage du planning ET des stats */
+            #view-planning, #view-stats { display: block !important; }
+            #view-agents { display: none !important; }
+            /* Saut de page avant les statistiques pour un rendu propre */
+            #view-stats { page-break-before: always; margin-top: 20px; }
         }
     </style>
 
@@ -163,7 +168,7 @@
 
                         </button>
 
-                        <button onclick="window.print()" class="bg-gray-600 text-white px-4 py-2 rounded-lg font-bold">🖨️ IMPRIMER PDF</button>
+                        <button onclick="imprimerPDF()" class="bg-gray-600 text-white px-4 py-2 rounded-lg font-bold">🖨️ IMPRIMER PDF</button>
 
                         <button onclick="saveData(true)" class="bg-blue-600 text-white px-4 py-2 rounded-lg font-bold shadow">💾 SAUVEGARDER</button>
 
@@ -315,6 +320,11 @@
 
 <script>
 
+    function imprimerPDF() {
+    renderStats(); // S'assure que les compteurs sont à jour
+    window.print();
+}
+
 // --- CONFIG FIREBASE ---
 
 const firebaseConfig = {
@@ -349,73 +359,46 @@ let state = { agents: [], presences: {}, month: "2026-05", dates: [], planning: 
 // --- FONCTION EXPORT EXCEL ---
 
 function exportToExcel() {
-
     const wb = XLSX.utils.book_new();
-
+    let exportData = [];
     
-
-    // 1. Feuille Planning
-
-    let planningData = [];
-
+    // --- 1. EN-TÊTE ET DONNÉES DU PLANNING ---
     let header = ["Agent"];
-
     state.dates.forEach(d => {
-
         let dateStr = `${d.getUTCDate()}/${d.getUTCMonth()+1}`;
-
         header.push(dateStr + " JOUR", dateStr + " NUIT");
-
     });
-
-    planningData.push(header);
-
+    exportData.push(header);
 
     getSortedAgents().forEach(a => {
-
         let row = [a.name];
-
         state.dates.forEach(d => {
-
             const dKey = d.toISOString();
-
             row.push(state.planning[dKey]?.['J']?.[a.id] || "-");
-
             row.push(state.planning[dKey]?.['N']?.[a.id] || "-");
-
         });
-
-        planningData.push(row);
-
+        exportData.push(row);
     });
 
+    // --- 2. SAUT DE LIGNES POUR SÉPARER LES TABLEAUX ---
+    exportData.push([]);
+    exportData.push([]);
+    exportData.push(["--- COMPTEURS GLOBAUX ---"]);
 
-    const wsPlanning = XLSX.utils.aoa_to_sheet(planningData);
-
-    XLSX.utils.book_append_sheet(wb, wsPlanning, "Planning_" + state.month);
-
-
-    // 2. Feuille Statistiques
-
-    let statsData = [["Agent", "CDD", "AMU", "BAT", "BAL", "CH", "POLY", "TOTAL"]];
-
+    // --- 3. EN-TÊTE ET DONNÉES DES STATISTIQUES ---
+    exportData.push(["Agent", "CDD", "AMU", "BAT", "BAL", "CH", "POLY", "TOTAL"]);
     state.agents.forEach(a => {
-
         const c = a.counters || { CDD:0, AMU:0, BAT:0, BAL:0, CH:0, POLY:0 };
-
         const total = Object.values(c).reduce((acc, v) => acc + v, 0);
-
-        statsData.push([a.name, c.CDD, c.AMU, c.BAT, c.BAL, c.CH, c.POLY, total]);
-
+        exportData.push([a.name, c.CDD, c.AMU, c.BAT, c.BAL, c.CH, c.POLY, total]);
     });
 
-    const wsStats = XLSX.utils.aoa_to_sheet(statsData);
+    // Création de l'unique feuille contenant tout
+    const ws = XLSX.utils.aoa_to_sheet(exportData);
+    XLSX.utils.book_append_sheet(wb, ws, "Planning_et_Stats");
 
-    XLSX.utils.book_append_sheet(wb, wsStats, "Statistiques_Globales");
-
-
+    // Téléchargement
     XLSX.writeFile(wb, `Planning_ShiftB_${state.month}.xlsx`);
-
 }
 
 
