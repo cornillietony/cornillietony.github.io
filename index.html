@@ -88,7 +88,15 @@
             <p class="text-gray-500 font-medium italic">Version 2.0 - Gestion des Compteurs & Export</p>
 
         </div>
-
+        
+            <div class="flex items-center mb-4 no-print bg-white p-3 rounded-lg shadow-sm border border-gray-200">
+                <label class="inline-flex items-center cursor-pointer">
+                    <input type="checkbox" id="toggleInactifs" class="hidden peer" onchange="renderPointage()">
+                    <div class="relative w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-700"></div>
+                    <span class="ml-3 text-sm font-semibold text-gray-700 uppercase tracking-wider">Afficher tous les agents</span>
+                </label>
+            </div>
+        
         <div class="flex gap-1">
 
             <button onclick="switchTab('planning')" id="btn-tab-planning" class="tab-btn active px-4 py-2 rounded-t-lg font-bold text-xs uppercase">📅 Planning</button>
@@ -750,27 +758,48 @@ function updateDates() {
 
 
 function renderPointage() {
-    const agentsSorted = getSortedAgents();
+    const allAgents = getSortedAgents();
+    // On récupère l'état du bouton (s'il n'existe pas encore, on affiche tout par défaut)
+    const showAll = document.getElementById('toggleInactifs') ? document.getElementById('toggleInactifs').checked : false;
     
-    // 1. CALCUL PRÉALABLE DES TOTAUX
     let totalsJ = {}, totalsN = {};
+    let agentsToDisplay = [];
+
+    // Initialisation des totaux
     state.dates.forEach(d => {
         const iso = d.toISOString();
         totalsJ[iso] = 0;
         totalsN[iso] = 0;
-        agentsSorted.forEach(agent => {
-            if (state.presences[`${agent.id}_${iso}_J`]) totalsJ[iso]++;
-            if (state.presences[`${agent.id}_${iso}_N`]) totalsN[iso]++;
-        });
     });
 
-    // 2. CONSTRUCTION DE L'EN-TÊTE (3 LIGNES)
-    // Ligne 1 : Les Dates
+    // Phase de calcul et de filtrage
+    allAgents.forEach(agent => {
+        let hasWorkedThisMonth = false;
+        
+        state.dates.forEach(d => {
+            const iso = d.toISOString();
+            if (state.presences[`${agent.id}_${iso}_J`]) {
+                totalsJ[iso]++;
+                hasWorkedThisMonth = true;
+            }
+            if (state.presences[`${agent.id}_${iso}_N`]) {
+                totalsN[iso]++;
+                hasWorkedThisMonth = true;
+            }
+        });
+
+        // LOGIQUE DU BOUTON :
+        // Si "showAll" est coché, on prend tout le monde.
+        // Sinon, on ne prend que ceux qui ont travaillé (hasWorkedThisMonth).
+        if (showAll || hasWorkedThisMonth) {
+            agentsToDisplay.push(agent);
+        }
+    });
+
+    // CONSTRUCTION DE L'EN-TÊTE
     let trDates = `<tr><th class="sticky-col bg-gray-100">DATES</th>`;
-    // Ligne 2 : Les Compteurs (Total)
     let trTotals = `<tr><th class="sticky-col bg-gray-100 text-blue-800">TOTAL PRÉSENTS</th>`;
-    // Ligne 3 : Les titres J / N
-    let trJN = `<tr><th class="sticky-col bg-gray-100">SHIFT</th>`;
+    let trJN = `<tr><th class="sticky-col bg-gray-100 border-b-2 border-gray-400">SHIFT</th>`;
 
     state.dates.forEach((d) => {
         const iso = d.toISOString();
@@ -778,20 +807,17 @@ function renderPointage() {
         const mois = d.getUTCMonth() + 1;
         
         trDates += `<th colspan="2" class="bg-gray-800 text-white border-l border-gray-600">${jour}/${mois}</th>`;
-        
-        // On affiche le total J et N sous chaque date
         trTotals += `<th class="bg-blue-50 text-blue-800 font-black text-sm">${totalsJ[iso]}</th>
                      <th class="bg-indigo-50 text-indigo-800 font-black text-sm border-r border-gray-400">${totalsN[iso]}</th>`;
-        
-        trJN += `<th class="text-[9px] bg-blue-900 text-white">J</th>
-                 <th class="text-[9px] bg-indigo-900 text-white border-r border-gray-400">N</th>`;
+        trJN += `<th class="text-[9px] bg-blue-900 text-white border-b-2 border-gray-400">J</th>
+                 <th class="text-[9px] bg-indigo-900 text-white border-r border-gray-400 border-b-2 border-gray-400">N</th>`;
     });
 
     document.getElementById('thead-pointage').innerHTML = trDates + "</tr>" + trTotals + "</tr>" + trJN + "</tr>";
 
-    // 3. CONSTRUCTION DU CORPS (BODY)
+    // CONSTRUCTION DU CORPS
     let tbody = "";
-    agentsSorted.forEach(agent => {
+    agentsToDisplay.forEach(agent => {
         tbody += `<tr>
             <td class="sticky-col font-bold border-r border-black bg-white flex justify-between items-center">
                 <span class="${agent.isPro ? 'text-blue-800' : ''}">${agent.name}</span>
@@ -818,11 +844,6 @@ function renderPointage() {
     });
     
     document.getElementById('tbody-pointage').innerHTML = tbody;
-
-    // On vide le tfoot car les totaux sont maintenant en haut
-    if(document.getElementById('tfoot-pointage')) {
-        document.getElementById('tfoot-pointage').innerHTML = "";
-    }
 }
 
 function renderResult() {
