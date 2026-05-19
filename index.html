@@ -35,7 +35,11 @@
 
         .sticky-col { position: sticky; left: 0; background-color: white; z-index: 20; text-align: left; border-right: 2px solid #000 !important; min-width: 170px; }
 
-        .cell-AMU { background-color: #fef08a; } .cell-BAT { background-color: #93c5fd; }
+        .cell-AMU1 { background-color: #fef08a; } 
+        
+        .cell-AMU2 { background-color: #fde047; border: 2px solid #eab308 !important; } 
+        
+        .cell-BAT { background-color: #93c5fd; }
 
         .cell-BAL { background-color: #86efac; } .cell-CH { background-color: #fdba74; }
 
@@ -800,12 +804,21 @@ function renderResult() {
                 const role = state.planning[dKey]?.[s]?.[a.id] || "-";
 
                 let color = "";
-
-                if(role.includes("AMU")) color="cell-AMU"; else if(role.includes("BAT")) color="cell-BAT";
-
-                else if(role.includes("BAL")) color="cell-BAL"; else if(role.includes("CH")) color="cell-CH";
-
-                else if(role==="CDD") color="cell-CDD"; else if(role==="POLY") color="cell-POLY";
+                    if(role.includes("AMU1")) {
+                            color = "cell-AMU1";
+                    } else if(role.includes("AMU2")) {
+                            color = "cell-AMU2";
+                    } else if(role.includes("BAT")) {
+                            color = "cell-BAT";
+                    } else if(role.includes("BAL")) {
+                            color = "cell-BAL";
+                    } else if(role.includes("CH")) {
+                            color = "cell-CH";
+                    } else if(role === "CDD") {
+                            color = "cell-CDD";
+                    } else if(role === "POLY") {
+                                color = "cell-POLY";
+                    }
 
                 tbody += `<td class="${color}"><select class="role-select" onchange="state.planning['${dKey}']['${s}']['${a.id}']=this.value; saveData()">
 
