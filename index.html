@@ -541,16 +541,24 @@ function generatePlanning() {
     let simCounters = {};
     state.agents.forEach(a => { simCounters[a.id] = { ...a.counters }; });
 
-    state.dates.forEach((d) => {
+    state.dates.forEach((d, idx) => {
         const dKey = d.toISOString();
         newPl[dKey] = { J: {}, N: {} };
         
         ['J', 'N'].forEach(shift => {
             let pool = getSortedAgents().filter(a => state.presences[`${a.id}_${dKey}_${shift}`]);
             let assignments = {};
+
+            const getPrevRole = (agentId, offset) => {
+                if (idx - offset < 0) return null;
+                const prevDateKey = state.dates[idx - offset].toISOString();
+                // On vérifie si l'agent avait un rôle AMU1 sur la garde complète précédente
+                return newPl[prevDateKey]?.['J']?.[agentId] || null;
+            };
+
             const getDayRole = (agentId) => shift === 'N' ? newPl[dKey]['J'][agentId] : null;
 
-            // --- 1. CDD ---
+            // --- 1. CDD (Inchangé) ---
             let cdd = pool.find(a => a.cap.CDD);
             if(cdd) { assignments[cdd.id] = "CDD"; simCounters[cdd.id].CDD++; }
 
@@ -564,13 +572,26 @@ function generatePlanning() {
                 assignments[bestCH.id] = "CH-PL"; simCounters[bestCH.id].CH++;
             }
 
-            // --- 3. AMU (AMU1 Alternance / AMU2 Continuité) ---
+            // --- 3. AMU (Avec nouvelles règles de restriction) ---
             const amuRoles = ["AMU1-CH", "AMU1-EQ", "AMU2-CH", "AMU2-EQ"];
             amuRoles.forEach(role => {
+                let isAMU1 = role.includes("AMU1");
                 let isAMU2 = role.includes("AMU2");
+
                 let amuQualified = pool.filter(a => {
                     if (assignments[a.id]) return false;
-                    if (isAMU2) return a.cap.AMU && a.cap.BAT; // AMU2 exige BAT
+                    
+                    // RÈGLE : Pas d'AMU1 si déjà fait le jour même (Interdiction 24h AMU1)
+                    if (isAMU1 && shift === 'N' && getDayRole(a.id)?.includes("AMU1")) return false;
+
+                    // RÈGLE : Pas d'AMU1 si déjà fait les 2 gardes précédentes (Max 2 consécutives)
+                    if (isAMU1) {
+                        let roleGardeMinus1 = getPrevRole(a.id, 1);
+                        let roleGardeMinus2 = getPrevRole(a.id, 2);
+                        if (roleGardeMinus1?.includes("AMU1") && roleGardeMinus2?.includes("AMU1")) return false;
+                    }
+
+                    if (isAMU2) return a.cap.AMU && a.cap.BAT;
                     return a.cap.AMU;
                 });
 
@@ -582,8 +603,13 @@ function generatePlanning() {
                         const roleJ = getDayRole(a.id);
                         if (shift === 'N' && roleJ) {
                             if (isAMU2 && roleJ === role) return -1; // AMU2 : Priorité continuité 24h
-                            if (!isAMU2 && roleJ.includes("BAT")) return -1; // AMU1 : Priorité alternance BAT -> AMU
+                            if (isAMU1 && roleJ.includes("BAT")) return -1; // AMU1 : Priorité alternance BAT -> AMU
                         }
+
+                        // VARIÉTÉ : On pénalise ceux qui ont déjà fait ce rôle récemment
+                        let lastRole = getPrevRole(a.id, 1);
+                        if (lastRole === role) return 1; 
+
                         return simCounters[a.id].AMU - simCounters[b.id].AMU;
                     })[0];
                     assignments[bestAMU.id] = role; simCounters[bestAMU.id].AMU++;
@@ -602,14 +628,18 @@ function generatePlanning() {
                 }
             });
 
-            // --- 5. BAT (Alternance pour AMU1) ---
+            // --- 5. BAT (Alternance forcée pour AMU1) ---
             ["BAT1", "BAT2"].forEach(role => {
                 let batQualified = pool.filter(a => a.cap.BAT && !assignments[a.id]);
                 if(batQualified.length > 0) {
                     let bestBAT = batQualified.sort((a, b) => {
                         const roleJ = getDayRole(a.id);
-                        // Si l'agent a fait AMU1 le jour, il est prioritaire pour BAT la nuit
+                        // RÈGLE : Si l'agent a fait AMU1 le jour, il DOIT faire BAT la nuit (Alternance 24h)
                         if (shift === 'N' && roleJ && roleJ.includes("AMU1")) return -1;
+                        
+                        // Variété sur les gardes précédentes
+                        if (getPrevRole(a.id, 1)?.includes("BAT")) return 1;
+
                         return simCounters[a.id].BAT - simCounters[b.id].BAT;
                     })[0];
                     assignments[bestBAT.id] = role; simCounters[bestBAT.id].BAT++;
