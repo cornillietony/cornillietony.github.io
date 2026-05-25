@@ -600,45 +600,48 @@ function generatePlanning() {
                 assignments[bestCDD.id] = "CDD"; 
                 simCounters[bestCDD.id].CDD++;
             }
-            // --- 2. CHAUFFEUR (Réservé aux PROs + Continuité 24h forcée) ---
-            let chQualified = pool.filter(a => a.cap.CH && a.isPro && !assignments[a.id]);
-            if(chQualified.length > 0) {
-                let bestCH = chQualified.sort((a, b) => {
-                    if (shift === 'N' && newPl[dKey]['J'][a.id] === "CH-PL") return -1;
-                    if (shift === 'N' && newPl[dKey]['J'][b.id] === "CH-PL") return 1;
-                    return simCounters[a.id].CH - simCounters[b.id].CH;
-                })[0];
-                assignments[bestCH.id] = "CH-PL"; simCounters[bestCH.id].CH++;
-            }
 
-            // --- 3. AMU (AMU1 Alternance stricte / AMU2 Continuité 24h) ---
-            const amuRoles = ["AMU1-CH", "AMU1-EQ", "AMU2-CH", "AMU2-EQ"];
-            amuRoles.forEach(role => {
-                let isAMU1 = role.includes("AMU1");
-                let isAMU2 = role.includes("AMU2");
-
+            // --- 2. AMU 1 (Alternance stricte) ---
+            const amu1Roles = ["AMU1-CH", "AMU1-EQ"];
+            amu1Roles.forEach(role => {
                 let amuQualified = pool.filter(a => {
                     if (assignments[a.id]) return false;
                     
-                    if (isAMU1) {
-                        // RÈGLE AMU1 NUIT : Obligation d'avoir fait BAT ou BAL le jour même
-                        if (shift === 'N') {
-                            const roleJour = newPl[dKey]['J'][a.id];
-                            if (!roleJour || (!roleJour.includes("BAT") && !roleJour.includes("BAL"))) return false;
-                        }
-                        // RÈGLE AMU1 : Max 2 gardes consécutives complètes
-                        let r1 = getPrevRole(a.id, 1);
-                        let r2 = getPrevRole(a.id, 2);
-                        if (r1?.includes("AMU1") && r2?.includes("AMU1")) return false;
+                    // RÈGLE AMU1 NUIT : Obligation d'avoir fait BAT ou BAL le jour même
+                    if (shift === 'N') {
+                        const roleJour = newPl[dKey]['J'][a.id];
+                        if (!roleJour || (!roleJour.includes("BAT") && !roleJour.includes("BAL"))) return false;
                     }
-                    if (isAMU2) return a.cap.AMU && a.cap.BAT;
+                    // RÈGLE AMU1 : Max 2 gardes consécutives complètes
+                    let r1 = getPrevRole(a.id, 1);
+                    let r2 = getPrevRole(a.id, 2);
+                    if (r1?.includes("AMU1") && r2?.includes("AMU1")) return false;
+                    
                     return a.cap.AMU;
                 });
 
                 if(amuQualified.length > 0) {
                     let bestAMU = amuQualified.sort((a, b) => {
+                        if (a.isPro !== b.isPro) return a.isPro ? 1 : -1;
+                        if (getPrevRole(a.id, 1) === role) return 1;
+                        return simCounters[a.id].AMU - simCounters[b.id].AMU;
+                    })[0];
+                    assignments[bestAMU.id] = role; simCounters[bestAMU.id].AMU++;
+                }
+            });
+
+            // --- 3. AMU 2 (Continuité 24h) ---
+            const amu2Roles = ["AMU2-CH", "AMU2-EQ"];
+            amu2Roles.forEach(role => {
+                let amuQualified = pool.filter(a => {
+                    if (assignments[a.id]) return false;
+                    return a.cap.AMU && a.cap.BAT;
+                });
+
+                if(amuQualified.length > 0) {
+                    let bestAMU = amuQualified.sort((a, b) => {
                         // Continuité AMU2 24h
-                        if (shift === 'N' && isAMU2) {
+                        if (shift === 'N') {
                             if (newPl[dKey]['J'][a.id] === role) return -1;
                             if (newPl[dKey]['J'][b.id] === role) return 1;
                         }
@@ -651,7 +654,18 @@ function generatePlanning() {
                 }
             });
 
-            // --- 4. BAL (Avec bascule AMU1) ---
+            // --- 4. CHAUFFEUR (Réservé aux PROs + Continuité 24h forcée) ---
+            let chQualified = pool.filter(a => a.cap.CH && a.isPro && !assignments[a.id]);
+            if(chQualified.length > 0) {
+                let bestCH = chQualified.sort((a, b) => {
+                    if (shift === 'N' && newPl[dKey]['J'][a.id] === "CH-PL") return -1;
+                    if (shift === 'N' && newPl[dKey]['J'][b.id] === "CH-PL") return 1;
+                    return simCounters[a.id].CH - simCounters[b.id].CH;
+                })[0];
+                assignments[bestCH.id] = "CH-PL"; simCounters[bestCH.id].CH++;
+            }
+
+            // --- 5. BAL (Avec bascule AMU1) ---
             ["BAL1", "BAL2"].forEach(role => {
                 let balQualified = pool.filter(a => a.cap.BAL && !assignments[a.id]);
                 if(balQualified.length > 0) {
@@ -669,7 +683,7 @@ function generatePlanning() {
                 }
             });
 
-            // --- 5. BAT (Avec bascule AMU1) ---
+            // --- 6. BAT (Avec bascule AMU1) ---
             ["BAT1", "BAT2"].forEach(role => {
                 let batQualified = pool.filter(a => a.cap.BAT && !assignments[a.id]);
                 if(batQualified.length > 0) {
@@ -686,11 +700,17 @@ function generatePlanning() {
                 }
             });
 
-            // --- 6. POLY ---
-            pool.forEach(a => { if(!assignments[a.id]) { assignments[a.id] = "POLY"; simCounters[a.id].POLY++; } });
+            // --- 7. POLY ---
+            pool.forEach(a => { 
+                if(!assignments[a.id]) { 
+                    assignments[a.id] = "POLY"; simCounters[a.id].POLY++; 
+                } 
+            });
+            
             newPl[dKey][shift] = assignments;
         });
     });
+    
     state.planning = newPl;
     renderResult();
 }
