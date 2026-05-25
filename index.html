@@ -601,34 +601,52 @@ function generatePlanning() {
                 simCounters[bestCDD.id].CDD++;
             }
 
-            // --- 2. AMU 1 (Alternance stricte) ---
-            const amu1Roles = ["AMU1-CH", "AMU1-EQ"];
-            amu1Roles.forEach(role => {
-                let amuQualified = pool.filter(a => {
-                    if (assignments[a.id]) return false;
-                    
-                    // RÈGLE AMU1 NUIT : Obligation d'avoir fait BAT ou BAL le jour même
-                    if (shift === 'N') {
-                        const roleJour = newPl[dKey]['J'][a.id];
-                        if (!roleJour || (!roleJour.includes("BAT") && !roleJour.includes("BAL"))) return false;
-                    }
-                    // RÈGLE AMU1 : Max 2 gardes consécutives complètes
-                    let r1 = getPrevRole(a.id, 1);
-                    let r2 = getPrevRole(a.id, 2);
-                    if (r1?.includes("AMU1") && r2?.includes("AMU1")) return false;
-                    
-                    return a.cap.AMU;
-                });
+          // --- 2. AMU 1 (Alternance stricte) ---
+const amu1Roles = ["AMU1-CH", "AMU1-EQ"];
+amu1Roles.forEach(role => {
+    let amuQualified = pool.filter(a => {
+        if (assignments[a.id]) return false;
+        
+        // RÈGLE NUIT MODIFIÉE
+        if (shift === 'N') {
+            const peutFaireFeu = (a.cap.BAT || a.cap.BAL);
+            const roleJour = newPl[dKey]['J'][a.id];
 
-                if(amuQualified.length > 0) {
-                    let bestAMU = amuQualified.sort((a, b) => {
-                        if (a.isPro !== b.isPro) return a.isPro ? 1 : -1;
-                        if (getPrevRole(a.id, 1) === role) return 1;
-                        return simCounters[a.id].AMU - simCounters[b.id].AMU;
-                    })[0];
-                    assignments[bestAMU.id] = role; simCounters[bestAMU.id].AMU++;
+            // Si l'agent PEUT faire du feu, on exige qu'il en ait fait le jour
+            if (peutFaireFeu) {
+                if (!roleJour || (!roleJour.includes("BAT") && !roleJour.includes("BAL"))) {
+                    return false;
                 }
-            });
+            }
+            // Si l'agent ne peut PAS faire de feu (que AMU), il est dispensé de la règle 
+            // et peut donc être sélectionné pour la nuit.
+        }
+
+        // RÈGLE AMU1 : Max 2 gardes consécutives
+        let r1 = getPrevRole(a.id, 1);
+        let r2 = getPrevRole(a.id, 2);
+        if (r1?.includes("AMU1") && r2?.includes("AMU1")) return false;
+        
+        return a.cap.AMU;
+    });
+
+    if(amuQualified.length > 0) {
+        let bestAMU = amuQualified.sort((a, b) => {
+            // Priorité absolue aux "Uniquement AMU" (Spécialistes)
+            const aOnlyAMU = (a.cap.AMU && !a.cap.BAT && !a.cap.BAL);
+            const bOnlyAMU = (b.cap.AMU && !b.cap.BAT && !b.cap.BAL);
+            if (aOnlyAMU && !bOnlyAMU) return -1;
+            if (!aOnlyAMU && bOnlyAMU) return 1;
+
+            if (a.isPro !== b.isPro) return a.isPro ? 1 : -1;
+            if (getPrevRole(a.id, 1) === role) return 1;
+            return simCounters[a.id].AMU - simCounters[b.id].AMU;
+        })[0];
+
+        assignments[bestAMU.id] = role; 
+        simCounters[bestAMU.id].AMU++;
+    }
+});
 
             // --- 3. AMU 2 (Continuité 24h) ---
             const amu2Roles = ["AMU2-CH", "AMU2-EQ"];
