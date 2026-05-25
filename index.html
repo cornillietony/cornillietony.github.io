@@ -276,6 +276,33 @@
 
                 </div>
 
+               <div class="bg-gray-50 p-4 rounded-xl border border-gray-200 mb-8 flex flex-wrap items-end gap-4 shadow-sm no-print">
+                    <div>
+                        <label class="block text-xs font-bold text-gray-700 mb-1">👤 Sélectionner un agent</label>
+                        <select id="manual-agent-select" class="border border-gray-300 rounded-lg p-2 text-sm min-w-[200px] bg-white cursor-pointer focus:ring-2 focus:ring-blue-500 outline-none">
+                            <option value="">-- Choisir un agent --</option>
+                            </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-gray-700 mb-1">🔢 Compteur à modifier</label>
+                        <select id="manual-counter-select" class="border border-gray-300 rounded-lg p-2 text-sm min-w-[150px] bg-white cursor-pointer focus:ring-2 focus:ring-blue-500 outline-none">
+                            <option value="CDD">CDD</option>
+                            <option value="AMU">AMU</option>
+                            <option value="BAT">BAT</option>
+                            <option value="BAL">BAL</option>
+                            <option value="CH">CH</option>
+                            <option value="POLY">POLY</option>
+                        </select>
+                    </div>
+                    <div class="flex gap-2">
+                        <button onclick="adjustCounter(1)" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-5 rounded-lg shadow-sm transition-colors text-sm">
+                            ➕ Ajouter (+1)
+                        </button>
+                        <button onclick="adjustCounter(-1)" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-5 rounded-lg shadow-sm transition-colors text-sm">
+                            ➖ Retirer (-1)
+                        </button>
+                    </div>
+                </div> 
 
                 <div class="overflow-x-auto border border-gray-200 rounded-xl">
 
@@ -503,7 +530,19 @@ function renderStats() {
         <div class="bg-purple-50 p-3 rounded-lg border border-purple-100 text-center"><p class="text-[10px] font-bold text-purple-600 uppercase">POLY</p><p class="text-2xl font-black">${totals.POLY}</p></div>
 
     `;
-
+// Remplissage du menu déroulant pour l'ajustement manuel des compteurs
+    const manualSelect = document.getElementById('manual-agent-select');
+    if (manualSelect) {
+        // On conserve l'option sélectionnée s'il y en a une, pour éviter que le menu saute après un clic
+        const currentSelection = manualSelect.value; 
+        
+        manualSelect.innerHTML = '<option value="">-- Choisir un agent --</option>';
+        getSortedAgents().forEach(a => {
+            manualSelect.innerHTML += `<option value="${a.id}">${a.name}</option>`;
+        });
+        
+        if (currentSelection) manualSelect.value = currentSelection;
+    }
 }
 
 
@@ -1008,7 +1047,37 @@ function switchTab(t) {
 
 }
 
+function adjustCounter(amount) {
+    const agentId = document.getElementById('manual-agent-select').value;
+    const counterType = document.getElementById('manual-counter-select').value;
 
+    if (!agentId) {
+        alert("⚠️ Veuillez sélectionner un agent dans la liste avant de modifier un compteur.");
+        return;
+    }
+
+    // Recherche de l'agent dans le state
+    let agent = state.agents.find(a => a.id === agentId);
+    
+    if (agent) {
+        // Sécurité : initialiser les compteurs s'ils n'existent pas
+        if (!agent.counters) {
+            agent.counters = { CDD:0, AMU:0, BAT:0, BAL:0, CH:0, POLY:0 };
+        }
+        
+        // Modification du compteur
+        agent.counters[counterType] += amount;
+        
+        // Optionnel : empêcher que le compteur devienne négatif
+        if (agent.counters[counterType] < 0) {
+            agent.counters[counterType] = 0;
+        }
+
+        // Enregistrer silencieusement dans Firebase et rafraîchir l'interface
+        saveData(false); 
+        renderStats(); 
+    }
+}
 window.onload = loadData;
 
 </script>
